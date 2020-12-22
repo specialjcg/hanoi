@@ -41,6 +41,11 @@ class Stack {
     empty(): boolean {
         return this.stack.length === 0;
     }
+
+    canAdd(ring: Ring): boolean {
+        if (this.empty()) return true;
+        return (this.top() > ring)
+    }
 }
 
 class Hanoi {
@@ -85,6 +90,24 @@ class Hanoi {
         return this.firstSlot.empty() && this.middleSlot.empty();
     }
 
+    smallestRingsPosition(): Slot | undefined {
+        const record: Record<Slot, Stack> = {
+            [Slot.FIRST]: this.firstSlot,
+            [Slot.MIDDLE]: this.middleSlot,
+            [Slot.LAST]: this.lastSlot,
+
+        }
+        return Object.entries(record).filter(([, stack]) => stack.get().includes(1)).map(([slot]) => slot)[0] as Slot;
+
+
+    }
+
+    canMove(from: Slot, to: Slot) {
+        const fromTop = this.stackFrom(from).top();
+        if (fromTop === undefined) return false;
+        return this.stackFrom(to).canAdd(fromTop);
+    }
+
     private stackFrom(slot: Slot): Stack {
         if (slot === Slot.FIRST) {
             return this.firstSlot
@@ -105,13 +128,48 @@ interface Step {
 type PurposeKeys = "start" | "intermediate" | "destination"
 
 type Purpose = Record<PurposeKeys, Slot>;
+
+const SLOTS = [Slot.FIRST, Slot.MIDDLE, Slot.LAST];
+const otherSlots = (slot?: Slot): Slot[] => SLOTS.filter(current => current !== slot);
+
+
+const movesOption = (slotOptions: Slot[]) => [
+    [slotOptions[0], slotOptions[1]],
+    [slotOptions[1], slotOptions[0]]
+]
+
+const leftSlot = (smallSlot: Slot) => {
+    const indexSlot = SLOTS.indexOf(smallSlot);
+    const leftIndex = (indexSlot + 2) % SLOTS.length;
+    return SLOTS[leftIndex];
+};
+
 const resolveHanoi = (number: number, purpose: Purpose = {
     start: Slot.FIRST,
     intermediate: Slot.MIDDLE,
     destination: Slot.LAST
 }): Step[] => {
-    return []
-}
+    if (number === 0) {
+        return []
+    }
+
+    const hanoi = new Hanoi(number);
+    let steps: Step[] = [];
+    steps = [...steps, {from: Slot.FIRST, to: Slot.LAST}];
+    hanoi.move(Slot.FIRST, Slot.LAST);
+    while (!hanoi.win()) {
+        const smallSlot = hanoi.smallestRingsPosition();
+        const slotOptions = otherSlots(smallSlot);
+        const availableMoves = movesOption(slotOptions)
+        const move: [Slot, Slot] = availableMoves.find(([from, to]) => hanoi.canMove(from, to)) as [Slot, Slot];
+        steps = [...steps, {from: move[0], to: move[1]}];
+        hanoi.move(...move);
+        const smallestTo = leftSlot(smallSlot);
+        steps = [...steps, {from: smallSlot, to: smallestTo}];
+        hanoi.move(smallSlot, smallestTo);
+    }
+    return steps;
+};
 
 // const resolveHanoi = (number: number, purpose: Purpose = {
 //     start: Slot.FIRST,
@@ -248,8 +306,39 @@ describe('resolve tower of hanoi', () => {
             startGame.move(Slot.FIRST, Slot.MIDDLE);
             expect(startGame.win()).toBeFalsy();
         });
+        it('should get slot of the smaller ring', () => {
+            const hanoi = new Hanoi(3);
+            hanoi.move(Slot.FIRST, Slot.MIDDLE);
+            expect(hanoi.smallestRingsPosition()).toBe(Slot.MIDDLE);
+        });
+        it('should get slot of the smaller ring on last', () => {
+            const hanoi = new Hanoi(3);
+            hanoi.move(Slot.FIRST, Slot.LAST);
+            expect(hanoi.smallestRingsPosition()).toBe(Slot.LAST);
+        });
+        it('should not have smallest when hanoi size is zero', () => {
+            const hanoi = new Hanoi(0);
 
-
+            expect(hanoi.smallestRingsPosition()).toBeUndefined();
+        });
+        it("it can't move on lower ring", () => {
+            const hanoi = new Hanoi(3);
+            hanoi.move(Slot.FIRST, Slot.MIDDLE);
+            expect(hanoi.canMove(Slot.FIRST, Slot.MIDDLE)).toBeFalsy();
+        });
+        it('it can move on bigger ring', () => {
+            const hanoi = new Hanoi(3);
+            hanoi.move(Slot.FIRST, Slot.MIDDLE);
+            expect(hanoi.canMove(Slot.MIDDLE, Slot.FIRST)).toBeTruthy();
+        });
+        it('it can move on empty stack', () => {
+            const hanoi = new Hanoi(3);
+            expect(hanoi.canMove(Slot.FIRST, Slot.MIDDLE)).toBeTruthy();
+        });
+        it("it can't move from an empty stack", () => {
+            const hanoi = new Hanoi(3);
+            expect(hanoi.canMove(Slot.MIDDLE, Slot.FIRST)).toBeFalsy();
+        });
     });
     describe('hanoi resolution', () => {
         it('should have no step with no ring', () => {
@@ -283,11 +372,11 @@ describe('resolve tower of hanoi', () => {
             ]);
 
         });
-        it('should manage big hanoi', () => {
+        /*it('should manage big hanoi', () => {
 
             expect(() => resolveHanoi(10000000)).not.toThrow();
 
-        });
+        });*/
 
     });
 });
